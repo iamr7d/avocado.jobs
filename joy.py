@@ -544,20 +544,10 @@ class JobSearchBot:
                 self.save_users()
                 self.send_message(chat_id, "▶️ Job notifications resumed!")
                 
-        elif text.startswith("/status"):
+        elif text.startswith("/extract"):
             chat_id_str = str(chat_id)
-            if chat_id_str in self.users:
-                user = self.users[chat_id_str]
-                status = (
-                    "📊 *Your Current Settings* 📊\n\n"
-                    f"🔍 Keywords: {', '.join(user['search_keywords'])}\n"
-                    f"📍 Location: {user['search_location']}\n"
-                    f"⭐ Min Match Score: {user['min_match_score']}%\n"
-                    f"🕒 Alert Time: {user['notification_time']}\n"
-                    f"📄 Resume: {'✅ Uploaded' if user['resume'] else '❌ Not uploaded'}\n"
-                    f"🔔 Notifications: {'✅ Active' if user['is_active'] else '⏸️ Paused'}"
-                )
-                self.send_message(chat_id, status, parse_mode="Markdown")
+            if chat_id_str in self.users and self.users[chat_id_str]["resume"]:
+                self.send_message
                 
     def process_telegram_updates(self):
         """Check for new Telegram messages and handle them"""
