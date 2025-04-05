@@ -1,0 +1,7 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python joy.py"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
