@@ -59,7 +59,8 @@ class JobSearchBot:
             logger.error(f"Error saving user data: {e}")
             
     def register_user(self, chat_id):
-        """Register a new user if not already registered"""
+        """Register a new user if not already registered
+        Returns True if this is a new user, False if user already exists"""
         chat_id_str = str(chat_id)
         if chat_id_str not in self.users:
             self.users[chat_id_str] = {
@@ -70,7 +71,8 @@ class JobSearchBot:
                 "jobs_sent": [],
                 "notification_time": "09:00",
                 "is_active": True,
-                "last_activity": datetime.now().isoformat()
+                "last_activity": datetime.now().isoformat(),
+                "welcomed": True  # Mark that welcome message has been sent
             }
             self.save_users()
             return True
@@ -431,22 +433,23 @@ class JobSearchBot:
                 except Exception as e:
                     logger.error(f"Error sending jobs to user {chat_id}: {e}")
                     
-    def parse_command(self, text, chat_id):
+    def parse_command(self, text, chat_id, skip_welcome=False):
         """Parse and handle user commands"""
         text = text.strip()
         
         if text.startswith("/start"):
-            self.register_user(chat_id)
-            welcome_msg = (
-                "👋 Welcome to JobMatchBot!\n\n"
-                "I'll help you find jobs that match your profile. To get started:\n"
-                "1️⃣ Send me your resume as a PDF file\n"
-                "2️⃣ I'll ask you for job search preferences\n"
-                "3️⃣ I'll send you daily job matches with AI-powered match scores\n\n"
-                "Type /help anytime to see available commands."
-            )
-            self.send_message(chat_id, welcome_msg)
-            self.ask_for_resume(chat_id)
+            is_new_user = self.register_user(chat_id)
+            if not skip_welcome and (is_new_user or text == "/start"):
+                welcome_msg = (
+                    "👋 Welcome to JobMatchBot!\n\n"
+                    "I'll help you find jobs that match your profile. To get started:\n"
+                    "1️⃣ Send me your resume as a PDF file\n"
+                    "2️⃣ I'll ask you for job search preferences\n"
+                    "3️⃣ I'll send you daily job matches with AI-powered match scores\n\n"
+                    "Type /help anytime to see available commands."
+                )
+                self.send_message(chat_id, welcome_msg)
+                self.ask_for_resume(chat_id)
             
         elif text.startswith("/help"):
             help_msg = (
@@ -560,25 +563,38 @@ class JobSearchBot:
             updates = response.json()
             
             if "result" in updates and updates["result"]:
-                for update in updates["result"]:
-                    self.last_update_id = update["update_id"]
+                # Process all updates and update the last_update_id to the highest one
+                # This ensures we don't process the same update multiple times
+                updates_to_process = updates["result"]
+                if updates_to_process:
+                    # Update the last_update_id to the highest one before processing
+                    self.last_update_id = max(update["update_id"] for update in updates_to_process)
                     
-                    if "message" in update:
-                        message = update["message"]
-                        chat_id = message["chat"]["id"]
-                        
-                        # Register user if new
-                        self.register_user(chat_id)
-                        
-                        if "document" in message:
-                            file_id = message["document"]["file_id"]
-                            self.handle_document(file_id, chat_id)
-                        elif "text" in message:
-                            text = message["text"]
-                            self.parse_command(text, chat_id)
+                    for update in updates_to_process:
+                        if "message" in update:
+                            message = update["message"]
+                            chat_id = message["chat"]["id"]
+                            chat_id_str = str(chat_id)
+                            
+                            # Register user if new and track if welcome message was sent
+                            is_new_user = self.register_user(chat_id)
+                            
+                            if "document" in message:
+                                file_id = message["document"]["file_id"]
+                                self.handle_document(file_id, chat_id)
+                            elif "text" in message:
+                                text = message["text"]
+                                # Only send welcome message for /start command
+                                # and avoid duplicate welcome messages
+                                if text.startswith("/start") and not is_new_user:
+                                    # User already exists, just process the command without sending welcome again
+                                    self.parse_command(text, chat_id, skip_welcome=True)
+                                else:
+                                    self.parse_command(text, chat_id)
                             
         except Exception as e:
             logger.error(f"Error processing updates: {e}")
+            # Don't update last_update_id on error to retry processing
             
     def schedule_user_jobs(self):
         """Schedule job alerts for all users at their preferred times"""
